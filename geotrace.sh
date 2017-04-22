@@ -1,12 +1,12 @@
 #!/bin/bash
 ###geotrace是根据mtr（my trace route）的报告内容结合whois来直观显示traceroute过程中经过的路由跳数、ip、平均延迟、运营商、地理位置信息等内容，在做机房选址的时候会给带来极大的帮助。
-###laijingli2006@gmail.com 
+### origin: laijingli2006@gmail.com 
+### update: TaoBeier <zhangjintao9020@gmail.com>
+
 
 ####自动适配是linux系统还是mac系统
 os_type=`uname`
-#ip_geo_method=whois
 ip_geo_method=qqwry
-#ip_geo_method=taobao
 
 mtr_report=/tmp/.mtr_report
 
@@ -36,4 +36,3 @@ elif [ $ip_geo_method = whois ];then
 		echo $0只支持linux和macos系统
 	fi
 fi
-

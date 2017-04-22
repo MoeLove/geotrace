@@ -5,6 +5,10 @@
 # Blog: http://linuxtoy.org/archives/python-ip.html
 # Modified by Demon
 # Blog: http://demon.tw/programming/python-qqwry-dat.html
+#
+# Updated by TaoBeier  2017.04.22
+# Just add update IP database function
+# ref: https://github.com/lilydjwg/winterpy/blob/master/pylib/QQWry.py
 
 '''用Python脚本查询纯真IP库
 
@@ -27,7 +31,7 @@ QQWry.Dat的格式如下:
        字符串形式(IP记录第5字节不等于0x01和0x02的情况)，
        重定向模式1(第5字节为0x01),则接下来3字节为国家信息存储地的偏移值
        重定向模式(第5字节为0x02),
-   
+
    对于地区记录，可以有两种表示方式： 字符串形式和重定向
 
    最后一条规则：重定向模式1的国家记录后不能跟地区记录
@@ -39,27 +43,28 @@ QQWry.Dat的格式如下:
 
 '''
 
-import sys
+import os
 import socket
+import sys
+import time
 from struct import pack, unpack
+
 
 class IPInfo(object):
     '''QQWry.Dat数据库查询功能集合
     '''
+
     def __init__(self, dbname):
         ''' 初始化类，读取数据库内容为一个字符串，
         通过开始8字节确定数据库的索引信息'''
-        
+
         self.dbname = dbname
-        # f = file(dbname, 'r')
 
         # Demon注：在Windows下用'r'会有问题，会把\r\n转换成\n
         # 详见http://demon.tw/programming/python-open-mode.html
         # 还有Python文档中不提倡用file函数来打开文件，推荐用open
-        f = open(dbname, 'rb')
-
-        self.img = f.read()
-        f.close()
+        with open(dbname, 'rb') as f:
+            self.img = f.read()
 
         # QQWry.Dat文件的开始8字节是索引信息,前4字节是开始索引的偏移值，
         # 后4字节是结束索引的偏移值。
@@ -74,23 +79,23 @@ class IPInfo(object):
 
         # 每条索引长7字节，这里得到索引总个数
         self.indexCount = (self.lastIndex - self.firstIndex) / 7 + 1
-    
-    def getString(self, offset = 0):
+
+    def getString(self, offset=0):
         ''' 读取字符串信息，包括"国家"信息和"地区"信息
 
         QQWry.Dat的记录区每条信息都是一个以'\0'结尾的字符串'''
-        
+
         o2 = self.img.find('\0', offset)
-        #return self.img[offset:o2]
+        # return self.img[offset:o2]
         # 有可能只有国家信息没有地区信息，
         gb2312_str = self.img[offset:o2]
         try:
-            utf8_str = unicode(gb2312_str,'gb2312').encode('utf-8')
+            utf8_str = unicode(gb2312_str, 'gb2312').encode('utf-8')
         except:
             return '未知'
         return utf8_str
 
-    def getLong3(self, offset = 0):
+    def getLong3(self, offset=0):
         '''QQWry.Dat中的偏移记录都是3字节，本函数取得3字节的偏移量的常规表示
         QQWry.Dat使用“字符串“存储这些值'''
         s = self.img[offset: offset + 3]
@@ -101,9 +106,9 @@ class IPInfo(object):
         # Demon注：和上面一样，强制使用little-endian
         return unpack('<I', s)[0]
 
-    def getAreaAddr(self, offset = 0):
+    def getAreaAddr(self, offset=0):
         ''' 通过给出偏移值，取得区域信息字符串，'''
-        
+
         byte = ord(self.img[offset])
         if byte == 1 or byte == 2:
             # 第一个字节为1或者2时，取得2-4字节作为一个偏移量调用自己
@@ -112,7 +117,7 @@ class IPInfo(object):
         else:
             return self.getString(offset)
 
-    def getAddr(self, offset, ip = 0):
+    def getAddr(self, offset, ip=0):
         img = self.img
         o = offset
         byte = ord(img[o])
@@ -122,7 +127,7 @@ class IPInfo(object):
             # [IP][0x01][国家和地区信息的绝对偏移地址]
             # 使用接下来的3字节作为偏移量调用字节取得信息
             return self.getAddr(self.getLong3(o + 1))
-        
+
         if byte == 2:
             # 重定向模式2
             # [IP][0x02][国家信息的绝对偏移][地区信息字符串]
@@ -132,7 +137,7 @@ class IPInfo(object):
             # 跳过前4字节取字符串作为地区信息
             aArea = self.getAreaAddr(o)
             return (cArea, aArea)
-            
+
         if byte != 1 and byte != 2:
             # 最简单的IP记录形式，[IP][国家信息][地区信息]
             # 重定向模式1有种情况就是偏移量指向包含国家和地区信息两个字符串
@@ -140,10 +145,10 @@ class IPInfo(object):
             # 简单地说：取连续取两个字符串！
 
             cArea = self.getString(o)
-            #o += len(cArea) + 1
+            # o += len(cArea) + 1
             # 我们已经修改cArea为utf-8字符编码了，len取得的长度会有变，
             # 用下面方法得到offset
-            o = self.img.find('\0',o) + 1
+            o = self.img.find('\0', o) + 1
             aArea = self.getString(o)
             return (cArea, aArea)
 
@@ -154,16 +159,16 @@ class IPInfo(object):
 
         m = (l + r) / 2
         o = self.firstIndex + m * 7
-        #new_ip = unpack('I', self.img[o: o+4])[0]
+        # new_ip = unpack('I', self.img[o: o+4])[0]
 
         # Demon注：和上面一样，强制使用little-endian
-        new_ip = unpack('<I', self.img[o: o+4])[0]
+        new_ip = unpack('<I', self.img[o: o + 4])[0]
 
         if ip <= new_ip:
             return self.find(ip, l, m)
         else:
             return self.find(ip, m, r)
-        
+
     def getIPAddr(self, ip):
         ''' 调用其他函数，取得信息！'''
         # 使用网络字节编码IP地址
@@ -178,17 +183,68 @@ class IPInfo(object):
         # IP记录偏移值+4可以丢弃前4字节的IP地址信息。
         (c, a) = self.getAddr(o2 + 4)
         return (c, a)
-        
+
     def output(self, first, last):
         for i in range(first, last):
-            o = self.firstIndex +  i * 7
-            ip = socket.inet_ntoa(pack('!I', unpack('I', self.img[o:o+4])[0]))
+            o = self.firstIndex + i * 7
+            ip = socket.inet_ntoa(
+                pack('!I', unpack('I', self.img[o:o + 4])[0]))
             offset = self.getLong3(o + 4)
             (c, a) = self.getAddr(offset + 4)
             print "%s %d %s/%s" % (ip, offset, c, a)
 
 
+def update_db(dbpath='QQWry.Dat'):
+    '''更新 QQWry IP数据库
+    '''
+
+    import subprocess
+    import zlib
+
+    copywrite_url = 'http://update.cz88.net/ip/copywrite.rar'
+    data_url = 'http://update.cz88.net/ip/qqwry.rar'
+
+    def decipher_data(key, data):
+        h = bytearray()
+        for b in data[:0x200]:
+            b = ord(b)
+            key *= 0x805
+            key += 1
+            key &= 0xff
+            h.append(key ^ b)
+        return bytes(h) + data[0x200:]
+
+    def unpack_meta(data):
+        # http://microcai.org/2014/05/11/qqwry_dat_download.html
+        (sign, version, _1, size, _, key, text,
+         link) = unpack('<4sIIIII128s128s', data)
+        sign = sign.decode('gb18030')
+        text = text.rstrip(b'\x00').decode('gb18030')
+        link = link.rstrip(b'\x00').decode('gb18030')
+        del data
+        return locals()
+
+    p = subprocess.Popen(['wget', copywrite_url])
+    p.wait()
+    d = open('copywrite.rar', 'rb').read()
+    info = unpack_meta(d)
+
+    p = subprocess.Popen(['wget', data_url])
+    p.wait()
+    d = open('qqwry.rar', 'rb').read()
+    d = decipher_data(info['key'], d)
+    d = zlib.decompress(d)
+
+    open(dbpath, 'w').write(d)
+
+    os.unlink('copywrite.rar')
+    os.unlink('qqwry.rar')
+
+
 def main():
+    if not os.path.exists('QQWry.Dat') or time.time() - os.stat('QQWry.Dat').st_mtime > 86400:
+        update_db()
+
     i = IPInfo('QQWry.Dat')
     (c, a) = i.getIPAddr(sys.argv[1])
 
@@ -201,7 +257,7 @@ def main():
 if __name__ == '__main__':
     main()
 
-# changelog
+# ChangeLog
 # 时间：2009年5月29日
 # 1. 工具下面网友的建议，修改"o += len(cArea) + 1"
 #    http://linuxtoy.org/archives/python-ip.html#comment-113960
